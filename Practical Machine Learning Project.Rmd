@@ -1,0 +1,122 @@
+---
+title: "Practical Machine Learning - Final Project"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+    keep_md: yes
+---
+## Project Summary
+Using machine learning algorithms, this project will use two data sets for training and testing to predict the manner how individuals did the exercise.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading the Libraries and Dataset
+After loading the libraries, we will now load the training and testing data sets.The testing dataset will be used later to quiz the model that we have built.
+```{r message=FALSE, warning=FALSE}
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(randomForest)
+
+train_data <- read.csv("pml-training.csv", na.strings = c("NA",""))
+test_data <- read.csv("pml-testing.csv",na.strings = c("NA",""))
+```
+
+Next, we will split the original training data set will be split to 70-30 test-train data.
+```{r message=FALSE, warning=FALSE}
+training_partition <- createDataPartition( y = train_data$classe,
+                                   p = 0.7,
+                                   list = FALSE)
+train_prelim <- train_data[training_partition,]
+test_prelim <-  train_data[-training_partition,]
+```
+
+## Data Preprocessing
+We will now prepare our data for modeling by removing the the rows with mostly NA values and near-zero-variance (NZV) variables. Then, we will update our train_prelim and test_prelim in every process.
+```{r message=FALSE, warning=FALSE}
+# Clean variables with NZV
+nzv_variables <- nearZeroVar(train_prelim)
+train_prelim <- train_prelim[,-nzv_variables]
+test_prelim <- test_prelim[,-nzv_variables]
+
+# Remove variables with mostly null values. We set 95% as our threshold
+na_variables <- sapply(train_prelim, function(x) mean(is.na(x))) > 0.95
+train_prelim <- train_prelim[,na_variables == FALSE]
+test_prelim <- test_prelim[,na_variables == FALSE]
+
+# After the cleaning process, we see that we are left with just 59 columns. 
+dim(train_prelim)
+dim(test_prelim)
+```
+
+Looking at the first 5 columns of our train_prelim, we see that these are just identifier variables and will not be needed for our prediction. Thus, we drop these columns and we are now left with just 54 predictors.
+```{r message=FALSE, warning=FALSE}
+train_prelim <- train_prelim[,-(1:5)]
+test_prelim <- test_prelim[,-(1:5)]
+```
+
+## Prediction Models
+In this project, we will build three models: Decision Tree, Random Forest model, and Generalized Boosted Model (GBM). We will train these models using the train_prelim and validate their accuracy using test_prelim. After the models have been built, we will choose the model with a higher accuracy and apply that to our test data set.
+
+### Decision Tree
+```{r message=FALSE, warning=FALSE}
+library(rpart)
+library(rattle)
+set.seed(999)
+DT_model <- rpart(classe~., data = train_prelim, method = "class")
+fancyRpartPlot(DT_model)
+```
+After we have built our model, we will apply it on our test_prelim
+```{r message=FALSE, warning=FALSE}
+DT_predict <- predict(DT_model, test_prelim, type="class")
+DT_conf <- confusionMatrix(DT_predict,factor(test_prelim$classe))
+DT_conf
+```
+The results show a predictive accuracy of **74.66%** for our Decision Tree model. Next, we will see how a Random Forest model compares to our first model.
+
+### Random Forest Model
+```{r message=FALSE, warning=FALSE}
+set.seed(999)
+RF_model <- train(classe~., data = train_prelim, method = "rf",
+                    trControl = trainControl(method = "repeatedcv",number = 5, repeats=2),
+                  verbose=FALSE)
+
+```
+After we have built our model, we will apply it on our test_prelim
+```{r message=FALSE, warning=FALSE}
+RF_predict <- predict(RF_model, test_prelim)
+RF_conf <- confusionMatrix(RF_predict,factor(test_prelim$classe))
+RF_conf
+```
+The results show a predictive accuracy of **99.81%** for our Random Forest model which was higher than the decision tree model. Finally, we will observe Generalized Boosted Modem compared to the first two models
+
+### Generalized Boosted Model
+```{r message=FALSE, warning=FALSE}
+library(caret)
+set.seed(999)
+GB_model <- train(classe~., data = train_prelim, method = "gbm", 
+                  trControl = trainControl(method = "repeatedcv",number = 5, repeats=2),
+                  verbose=FALSE)
+
+```
+After we have built our model, we will apply it on our test_prelim
+```{r message=FALSE, warning=FALSE}
+GB_predict <- predict(GB_model, test_prelim)
+GB_conf <- confusionMatrix(GB_predict,factor(test_prelim$classe))
+GB_conf
+```
+The results show a predictive accuracy of 98.69% for our Generalized Boosted Model which was lower than the random forest model.
+
+## Summary of Results and Choosing the Best Predictive Model
+From our series of model analysis, we see that the decision tree model had the lowest predictive accuracy of **75.2%**  among the three while both RF and GBM models had almost equal predictive accuracy with **99.81%** and **98.69%** respectively.
+
+Although both RF and GMB can be used on our quiz dataset, we will proceed with the random forest model. Let's now apply our final model to the test data.
+```{r message=FALSE, warning=FALSE}
+final_predict <- as.data.frame(predict(RF_model, test_data))
+final_predict
+```
+
+
